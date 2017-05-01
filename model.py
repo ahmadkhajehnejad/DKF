@@ -5,7 +5,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import arg_scope
 import tensorflow as tf
 
-from utils import discriminator, encoder, compute_classification_loss
+from utils import discriminator, encoder, decoder, compute_classification_loss
 
 class Model(object):
 
@@ -77,7 +77,20 @@ class Model(object):
                 with tf.variable_scope("encoder_o_t"):
                     self.o_t_p = encoder(self.input_tensor[:, 2 * input_size:],\
                         hidden_size)
-                    
+            
+            with tf.variable_scope("decoder"):
+                with tf.variable_scope("decoder_s_t"):
+                    self.output_s_t_minus_1 = decoder(self.s_t_minus_1_p, input_size)
+                with tf.variable_scope("decoder_s_t", reuse=True):
+                    self.output_s_t = decoder(self.s_t_p,input_size)
+                with tf.variable_scope("decoder_o_t"):
+                    self.output_o_t = decoder(self.o_t_p,input_size);
+            self.output_tensor = tf.concat([self.output_s_t_minus_1, self.output_s_t, self.output_o_t],axis=1)
+            
+            #define reconstruction loss
+            reconstruction_loss = tf.reduce_mean(tf.norm(self.output_tensor - \
+                self.input_tensor, axis=1))
+            
             # define classification loss
             y_1 = self.s_t_p - tf.matmul(self.s_t_minus_1_p, self.a_2)
             pos_samples_1 = tf.matmul(tf.random_normal([batch_size, hidden_size],\
@@ -103,15 +116,25 @@ class Model(object):
             tf.summary.scalar('classification_loss', classification_loss)
             tf.summary.scalar('classification_loss_1', classification_loss_1)
             tf.summary.scalar('classification_loss_2', classification_loss_2)
+            tf.summary.scalar('reconstruction_loss', reconstruction_loss)
 
             # define references to params
             encoder_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='encoder')
+            decoder_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='decoder')
+            autoencoder_params = encoder_params + decoder_params
             discriminator_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, \
                 scope='discriminator')
             
             global_step = tf.contrib.framework.get_or_create_global_step()
             # define training steps
             self.learn_rate = self._get_learn_rate(global_step, learning_rate)
+            
+            # update autoencoder params to minimise reconstruction loss
+            self.train_autoencoder = layers.optimize_loss(reconstruction_loss, \
+                    global_step, self.learn_rate * 0.1, optimizer=lambda lr: \
+                    tf.train.AdamOptimizer(lr), variables=\
+                    #tf.train.MomentumOptimizer(lr, 0.9), variables=\
+                    autoencoder_params, update_ops=[])
             
             # update discriminator
             self.train_discriminator = layers.optimize_loss(classification_loss, \
@@ -142,13 +165,13 @@ class Model(object):
 
     def update_params(self, inputs):
         ''' the public method that update all params given a batch of data'''
-        global_step = tf.contrib.framework.get_or_create_global_step()
+        
+        reconstruction_loss_value = self.sess.run(self.train_autoencoder, \
+                {self.input_tensor: inputs})
         
         classify_loss_value = self.sess.run(self.train_discriminator, {self.input_tensor: inputs})
-        #classify_loss_value = 0
         
         summary, _ = self.sess.run([self.merged, self.train_encoder], {self.input_tensor: inputs})
-        #summary = self.sess.run(self.merged, {self.input_tensor: inputs})
         
-        return classify_loss_value, summary
+        return reconstruction_loss_value, classify_loss_value, summary
         

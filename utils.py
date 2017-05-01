@@ -40,8 +40,8 @@ def decoder(input_tensor, output_size):
     Returns:
         the reconstructed images, [batch_size, 28 * 28]
     '''
-    net = layers.fully_connected(input_tensor, 256)
-    net = layers.fully_connected(net, 100)
+    net = layers.fully_connected(input_tensor, 100)
+    net = layers.fully_connected(net, 256)
     net = layers.fully_connected(net, output_size, activation_fn=None)
     return net
 
