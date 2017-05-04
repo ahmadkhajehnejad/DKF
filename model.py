@@ -11,7 +11,9 @@ class Model(object):
 
     def __init__(self, input_size, hidden_size, batch_size, learning_rate, log_dir):
         self.input_tensor = tf.placeholder(tf.float32, [None, 3 * input_size])
+        self.s_t_p_placeholder = tf.placeholder(tf.float32, [None, hidden_size])
         
+        '''
         ##################################
         with open('params.txt') as f:
             first = f.readline()
@@ -22,39 +24,40 @@ class Model(object):
             ln = f.readline()
             for i in range(s_p_dim):
                 temp = f.readline()
-            sig_2_init = np.zeros((s_p_dim, s_p_dim), np.float32)
+            self.sig_2_init = np.zeros((s_p_dim, s_p_dim), np.float32)
             for i in range(s_p_dim):
                 temp = f.readline().strip('\n').split(' ')
                 for j in range(s_p_dim):
-                    sig_2_init[i,j] = float(temp[j])
+                    self.sig_2_init[i,j] = float(temp[j])
             
-            eig_val , eig_vec = np.linalg.eig(sig_2_init)
+            eig_val , eig_vec = np.linalg.eig(self.sig_2_init)
             cf = np.sqrt(np.repeat(eig_val,s_p_dim).reshape(s_p_dim,s_p_dim).transpose())
-            r_2_init = np.multiply(cf,eig_vec)
+            self.r_2_init = np.multiply(cf,eig_vec)
             
-            sig_3_init = np.zeros((o_p_dim, o_p_dim), np.float32)
+            self.sig_3_init = np.zeros((o_p_dim, o_p_dim), np.float32)
             for i in range(o_p_dim):
                 temp = f.readline().strip('\n').split(' ')
                 for j in range(o_p_dim):
-                    sig_3_init[i,j] = float(temp[j])
+                    self.sig_3_init[i,j] = float(temp[j])
             
-            eig_val , eig_vec = np.linalg.eig(sig_3_init)
+            eig_val , eig_vec = np.linalg.eig(self.sig_3_init)
             cf = np.sqrt(np.repeat(eig_val,o_p_dim).reshape(o_p_dim,o_p_dim).transpose())
-            r_3_init = np.multiply(cf,eig_vec)
+            self.r_3_init = np.multiply(cf,eig_vec)
             
-            a_2_init = np.zeros((s_p_dim, s_p_dim), np.float32)
+            self.a_2_init = np.zeros((s_p_dim, s_p_dim), np.float32)
             for i in range(s_p_dim):
                 temp = f.readline().strip('\n').split(' ')
                 for j in range(s_p_dim):
-                    a_2_init[i,j] = float(temp[j])
+                    self.a_2_init[i,j] = float(temp[j])
             
-            a_3_init = np.zeros((s_p_dim, o_p_dim), np.float32)
+            self.a_3_init = np.zeros((s_p_dim, o_p_dim), np.float32)
             for i in range(s_p_dim):
                 temp = f.readline().strip('\n').split(' ')
                 for j in range(o_p_dim):
-                    a_3_init[i,j] = float(temp[j])     
+                    self.a_3_init[i,j] = float(temp[j])     
         ###################################
-        
+
+
         self.r_2 = tf.get_variable('r_2',\
             initializer=r_2_init)
         self.r_3 = tf.get_variable('r_3',\
@@ -64,8 +67,9 @@ class Model(object):
         self.a_2 = tf.get_variable('a_2',\
             initializer=a_2_init)
         self.a_3 = tf.get_variable('a_3',\
-            initializer=a_3_init)
-        
+            initializer=a_3_init) 
+        '''
+                
         with arg_scope([layers.fully_connected], activation_fn=tf.nn.relu):
             with tf.variable_scope("encoder"):
                 with tf.variable_scope("encoder_s_t"):
@@ -83,9 +87,17 @@ class Model(object):
                     self.output_s_t_minus_1 = decoder(self.s_t_minus_1_p, input_size)
                 with tf.variable_scope("decoder_s_t", reuse=True):
                     self.output_s_t = decoder(self.s_t_p,input_size)
+                with tf.variable_scope("decoder_s_t", reuse=True):
+                    self.s_t_decoded = decoder(self.s_t_p_placeholder, input_size)
                 with tf.variable_scope("decoder_o_t"):
                     self.output_o_t = decoder(self.o_t_p,input_size);
             self.output_tensor = tf.concat([self.output_s_t_minus_1, self.output_s_t, self.output_o_t],axis=1)
+            
+            self.a_2, self.sigma_2, self.a_3, self.sigma_3 = self._assign_Gaussian_params()
+            self.r_2 = tf.cholesky(self.sigma_2)
+            self.r_3 = tf.cholesky(self.sigma_3)
+            self.b_2 = tf.zeros([hidden_size],1)
+            self.b_3 = tf.zeros([hidden_size],1)
             
             #define reconstruction loss
             reconstruction_loss = tf.reduce_mean(tf.norm(self.output_tensor - \
@@ -93,11 +105,14 @@ class Model(object):
             
             # define classification loss
             y_1 = self.s_t_p - tf.matmul(self.s_t_minus_1_p, self.a_2)
-            pos_samples_1 = tf.matmul(tf.random_normal([batch_size, hidden_size],\
-                stddev=1.), self.r_2)
+            mvn_1 = tf.contrib.distributions.MultivariateNormalFull(self.b_2, self.sigma_2)
+            #mvn_1 = tf.contrib.distributions.MultivariateNormalTrill(self.b_2, scale_tril=self.r_2)
+            pos_samples_1 = mvn_1.sample(batch_size)
+            
             y_2 = self.o_t_p - tf.matmul(self.s_t_p, self.a_3)
-            pos_samples_2 = tf.matmul(tf.random_normal([batch_size, hidden_size],\
-                stddev=1.), self.r_3)
+            #mvn_2 = tf.contrib.distributions.MultivariateNormalTriL(self.b_3, scale_tril=self.r_3)
+            mvn_2 = tf.contrib.distributions.MultivariateNormalFull(self.b_3, self.sigma_3)
+            pos_samples_2 = mvn_2.sample(batch_size)
             
             with tf.variable_scope('discriminator'):
                 with tf.variable_scope('d1'):
@@ -112,7 +127,20 @@ class Model(object):
             classification_loss_2 = compute_classification_loss(pos_samples_2_pred, neg_samples_2_pred)
             classification_loss = classification_loss_1 + classification_loss_2
             
+            # define s_t likelihood
+            s_diff = self.s_t_p - tf.matmul(self.s_t_minus_1_p, self.a_2)
+            s_t_likelihood = tf.reduce_sum(mvn_1.log_prob(s_diff))
+            
+            # define o_t likelihood
+            o_diff = self.o_t_p - tf.matmul(self.s_t_p, self.a_3)
+            o_t_likelihood = tf.reduce_sum(mvn_2.log_prob(o_diff))
+              
+            self.likelihood = s_t_likelihood + o_t_likelihood
+            
             # add summary ops
+            tf.summary.scalar('likelihood', self.likelihood)
+            tf.summary.scalar('s_t_likelihood', s_t_likelihood)
+            tf.summary.scalar('o_t_likelihood', o_t_likelihood)
             tf.summary.scalar('classification_loss', classification_loss)
             tf.summary.scalar('classification_loss_1', classification_loss_1)
             tf.summary.scalar('classification_loss_2', classification_loss_2)
@@ -122,6 +150,7 @@ class Model(object):
             encoder_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='encoder')
             decoder_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='decoder')
             autoencoder_params = encoder_params + decoder_params
+            gaussian_params = [self.a_2, self.a_3, self.r_2, self.r_3]
             discriminator_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, \
                 scope='discriminator')
             
@@ -135,7 +164,7 @@ class Model(object):
                     tf.train.AdamOptimizer(lr), variables=\
                     #tf.train.MomentumOptimizer(lr, 0.9), variables=\
                     autoencoder_params, update_ops=[])
-            
+                        
             # update discriminator
             self.train_discriminator = layers.optimize_loss(classification_loss, \
                     global_step, self.learn_rate * 10, optimizer=lambda lr: \
@@ -163,6 +192,7 @@ class Model(object):
         
         return tf.train.piecewise_constant(global_step, boundaries, values)
 
+        
     def update_params(self, inputs):
         ''' the public method that update all params given a batch of data'''
         
@@ -171,7 +201,33 @@ class Model(object):
         
         classify_loss_value = self.sess.run(self.train_discriminator, {self.input_tensor: inputs})
         
-        summary, _ = self.sess.run([self.merged, self.train_encoder], {self.input_tensor: inputs})
+        summary, likelihood_value, _ = self.sess.run([self.merged, self.likelihood, self.train_encoder],\
+                                                     {self.input_tensor: inputs})
         
-        return reconstruction_loss_value, classify_loss_value, summary
+        return reconstruction_loss_value, likelihood_value, classify_loss_value, summary
+    
+    def decode_s_t_p(self,input_s_t_p):
+        return self.sess.run(self.s_t_decoded, {self.s_t_p_placeholder: input_s_t_p})
         
+    def _assign_Gaussian_params(self):
+        hidden_size = int(self.s_t_p.shape[1])
+        
+        a_2 = tf.eye(hidden_size) # tf.constant(self.a_2_init)
+        sig_2 = tf.eye(hidden_size) # tf.constant(self.sig_2_init)
+
+        a_3 = tf.eye(hidden_size) # tf.constant(self.a_3_init) 
+        sig_3 = tf.eye(hidden_size) # tf.constant(self.sig_3_init) 
+        
+        return a_2, sig_2, a_3, sig_3
+        
+        
+
+        
+
+'''
+            # update Gaussian parameters to maximize likelihood
+            self.train_likelihood = layers.optimize_loss(-likelihood, \
+                    global_step, self.learn_rate * 0.1, optimizer=lambda lr: \
+                    tf.train.AdamOptimizer(lr), variables=\
+                    gaussian_params, update_ops=[])
+'''
