@@ -13,7 +13,7 @@ class Model(object):
         self.input_tensor = tf.placeholder(tf.float32, [None, 3 * input_size])
         self.s_t_p_placeholder = tf.placeholder(tf.float32, [None, hidden_size])
         
-        '''
+        
         ##################################
         with open('params.txt') as f:
             first = f.readline()
@@ -56,8 +56,8 @@ class Model(object):
                 for j in range(o_p_dim):
                     self.a_3_init[i,j] = float(temp[j])     
         ###################################
-
-
+        
+        '''
         self.r_2 = tf.get_variable('r_2',\
             initializer=r_2_init)
         self.r_3 = tf.get_variable('r_3',\
@@ -93,7 +93,7 @@ class Model(object):
                     self.output_o_t = decoder(self.o_t_p,input_size);
             self.output_tensor = tf.concat([self.output_s_t_minus_1, self.output_s_t, self.output_o_t],axis=1)
             
-            self.a_2, self.sigma_2, self.a_3, self.sigma_3 = self._assign_Gaussian_params()
+            self.a_2, self.sigma_2, self.a_3, self.sigma_3 = self._MLE_Gaussian_params()
             self.r_2 = tf.cholesky(self.sigma_2)
             self.r_3 = tf.cholesky(self.sigma_3)
             self.b_2 = tf.zeros([hidden_size],1)
@@ -209,12 +209,75 @@ class Model(object):
     def decode_s_t_p(self,input_s_t_p):
         return self.sess.run(self.s_t_decoded, {self.s_t_p_placeholder: input_s_t_p})
         
-    def _assign_Gaussian_params(self):
+    def _MLE_Gaussian_params(self):
         hidden_size = int(self.s_t_p.shape[1])
         
+        '''
+        a_2 = tf.transpose(\
+                           tf.matmul(\
+                                     tf.reduce_sum(\
+                                                   tf.matmul(\
+                                                             tf.reshape(self.s_t_p,[-1,hidden_size,1]),\
+                                                             tf.reshape(self.s_t_minus_1_p,(-1,1,hidden_size))\
+                                                            ),\
+                                                   axis = 0\
+                                                  ),\
+                                     tf.matrix_inverse(\
+                                                       tf.reduce_sum(\
+                                                                     tf.matmul(\
+                                                                               tf.reshape(self.s_t_minus_1_p,(-1,hidden_size,1)),\
+                                                                               tf.reshape(self.s_t_minus_1_p,(-1,1,hidden_size))\
+                                                                              ),\
+                                                                     axis = 0\
+                                                                    ) + \
+                                                       (1e-8 * tf.eye(hidden_size))\
+                                                      )\
+                                    )\
+                          )
+        
+        sig_2 = tf.reduce_mean(\
+                               tf.matmul(\
+                                         tf.reshape(self.s_t_p - tf.matmul(self.s_t_minus_1_p, a_2) , (-1,hidden_size,1)),\
+                                         tf.reshape(self.s_t_p - tf.matmul(self.s_t_minus_1_p, a_2) , (-1,1,hidden_size)),\
+                                        ),\
+                               axis=0\
+                              ) + (1e-0 * tf.eye(hidden_size))
+        '''
         a_2 = tf.eye(hidden_size) # tf.constant(self.a_2_init)
         sig_2 = tf.eye(hidden_size) # tf.constant(self.sig_2_init)
 
+        '''
+        a_3 = tf.transpose(\
+                           tf.matmul(\
+                                     tf.reduce_sum(\
+                                                   tf.matmul(\
+                                                             tf.reshape(self.o_t_p,(-1,hidden_size,1)),\
+                                                             tf.reshape(self.s_t_p,(-1,1,hidden_size))\
+                                                            ),\
+                                                   axis = 0\
+                                                  ),\
+                                     tf.matrix_inverse(\
+                                                       tf.reduce_sum(\
+                                                                     tf.matmul(\
+                                                                               tf.reshape(self.s_t_p,(-1,hidden_size,1)),\
+                                                                               tf.reshape(self.s_t_p,(-1,1,hidden_size))\
+                                                                              ),\
+                                                                     axis = 0\
+                                                                    ) + \
+                                                       (1e-8 * tf.eye(hidden_size))\
+                                                      )\
+                                    )\
+                          )
+        '''
+        '''
+        sig_3 = tf.reduce_mean(\
+                               tf.matmul(\
+                                         tf.reshape(self.o_t_p - tf.matmul(self.s_t_p, a_3) , (-1,hidden_size,1)),
+                                         tf.reshape(self.o_t_p - tf.matmul(self.s_t_p, a_3) , (-1,1,hidden_size)),
+                                        ),
+                               axis=0\
+                              ) + (1e-0 * tf.eye(hidden_size))
+        '''
         a_3 = tf.eye(hidden_size) # tf.constant(self.a_3_init) 
         sig_3 = tf.eye(hidden_size) # tf.constant(self.sig_3_init) 
         
