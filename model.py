@@ -13,7 +13,7 @@ class Model(object):
         self.input_tensor = tf.placeholder(tf.float32, [None, 3 * input_size])
         self.s_t_p_placeholder = tf.placeholder(tf.float32, [None, hidden_size])
         
-        
+        '''
         ##################################
         with open('params.txt') as f:
             first = f.readline()
@@ -56,20 +56,8 @@ class Model(object):
                 for j in range(o_p_dim):
                     self.a_3_init[i,j] = float(temp[j])     
         ###################################
+        '''
         
-        '''
-        self.r_2 = tf.get_variable('r_2',\
-            initializer=r_2_init)
-        self.r_3 = tf.get_variable('r_3',\
-            initializer=r_3_init)
-        self.sigma_2 = tf.matmul(self.r_2, tf.transpose(self.r_2))
-        self.sigma_3 = tf.matmul(self.r_3, tf.transpose(self.r_3))
-        self.a_2 = tf.get_variable('a_2',\
-            initializer=a_2_init)
-        self.a_3 = tf.get_variable('a_3',\
-            initializer=a_3_init) 
-        '''
-                
         with arg_scope([layers.fully_connected], activation_fn=tf.nn.relu):
             with tf.variable_scope("encoder"):
                 with tf.variable_scope("encoder_s_t"):
@@ -243,7 +231,7 @@ class Model(object):
                                axis=0\
                               ) + (1e-0 * tf.eye(hidden_size))
         '''
-        a_2 = tf.eye(hidden_size) # tf.constant(self.a_2_init)
+        a_2 =  tf.eye(hidden_size) # tf.constant(self.a_2_init)
         sig_2 = tf.eye(hidden_size) # tf.constant(self.sig_2_init)
 
         '''
@@ -278,8 +266,8 @@ class Model(object):
                                axis=0\
                               ) + (1e-0 * tf.eye(hidden_size))
         '''
-        a_3 = tf.eye(hidden_size) # tf.constant(self.a_3_init) 
-        sig_3 = tf.eye(hidden_size) # tf.constant(self.sig_3_init) 
+        a_3 = tf.eye(hidden_size) # tf.constant(self.a_3_init)
+        sig_3 =  tf.eye(hidden_size) # tf.constant(self.sig_3_init)
         
         return a_2, sig_2, a_3, sig_3
         
