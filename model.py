@@ -81,8 +81,8 @@ class Model(object):
                     self.output_o_t = decoder(self.o_t_p,input_size);
             self.output_tensor = tf.concat([self.output_s_t_minus_1, self.output_s_t, self.output_o_t],axis=1)
             
-            self.a_2, self.b_2, self.sigma_2, self.a_3, self.b_3, self.sigma_3 = self._MLE_Gaussian_params()
-            #self.a_2, self.b_2, self.sigma_2, self.a_3, self.b_3, self.sigma_3 = self._simple_Gaussian_params()
+            #self.a_2, self.b_2, self.sigma_2, self.a_3, self.b_3, self.sigma_3 = self._MLE_Gaussian_params()
+            self.a_2, self.b_2, self.sigma_2, self.a_3, self.b_3, self.sigma_3 = self._simple_Gaussian_params()
             #self.a_2, self.b_2, self.sigma_2, self.a_3, self.b_3, self.sigma_3 = self._simple_Gaussian_plus_offset_params()
             self.r_2 = tf.cholesky(self.sigma_2)
             self.r_3 = tf.cholesky(self.sigma_3)

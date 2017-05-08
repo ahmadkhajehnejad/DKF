@@ -10,7 +10,7 @@ def encoder(input_tensor, output_size):
 
     Returns:
         A tensor that expresses the encoder network
-    '''
+    ''' 
     net = layers.fully_connected(input_tensor, 256)
     net = layers.fully_connected(net, 100)
     net = layers.fully_connected(net, output_size, activation_fn=None)
